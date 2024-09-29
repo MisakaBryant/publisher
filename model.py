@@ -1,41 +1,40 @@
 import json
+import shutil
+from datetime import datetime
 
-from app import app, api, db
+from external import db
 from config.constant import *
 from os_utils import run
 
 
-@api.model("项目")
 class Project(db.Model):
-    def __init__(self, project_id):
-        self.project_id = project_id
+    __abstract__ = True
 
     def __str__(self):
         return json.dumps(self.__dict__)
 
+    def add_file(self, file_path):
+        pass
 
-@api.model("Java项目")
+
 class JavaProject(Project):
     __tablename__ = "java_project"
-    project_id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     java_path = db.Column(db.String(255))
-    jar_path = db.Column(db.JSON)
+    jar_path = db.Column(db.String(255))
+    jars = db.Column(db.JSON)
     config = db.Column(db.JSON)
     properties = db.Column(db.JSON)
-    process = db.Column(db.Integer)
+    process = db.Column(db.JSON)
 
     def __init__(self, **kwargs):
-        project_id = kwargs.get("project_id")
-        super().__init__(project_id)
-        self.java_path = kwargs.get("java_path") | DE_JAVA_PATH
-        self.jar_path = {}
-        self.config = {}
-        self.properties = {}
+        self.java_path = kwargs.get("java_path", DE_JAVA_PATH)
+        self.jar_path = kwargs.get("jar_path", DE_FILE_PATH)
+        self.jars = []
+        self.config = kwargs.get("config", {})
+        self.properties = kwargs.get("properties", {})
         self.process = None
         self.exception = None
-
-    def __str__(self):
-        return f"Java Project {self.project_id}"
 
     def run(self):
         jvm_config = [f"-X{key}{value}" for key, value in self.config.items()]
@@ -58,14 +57,38 @@ class JavaProject(Project):
             return self.exception
         return None
 
+    def add_file(self, file_path):
+        jar_name = str(self.project_id) + datetime.now().strftime("%Y%m%d%H%M%S") + ".jar"
+        jar_path = self.jar_path
+        if not jar_path:
+            return False
+        if len(self.jars) >= MAX_FILE_COUNT:
+            try:
+                shutil.rmtree(jar_path + self.jars.pop(MAX_FILE_COUNT - 1))
+            except FileNotFoundError:
+                pass
+        self.jars.insert(0, jar_name)
+        shutil.move(file_path, jar_path + jar_name)
+        return True
 
-@api.model("Html项目")
-class HtmlProject(Project):
+    def del_all_files(self):
+        for jar in self.jars:
+            try:
+                shutil.rmtree(self.jar_path + jar)
+            except FileNotFoundError:
+                pass
+        self.jars.clear()
+
+
+class WebProject(Project):
+    __tablename__ = "web_project"
+    project_id = db.Column(db.Integer, primary_key=True)
+
     def __str__(self):
-        return f"Html Project {self.project_id}"
+        return f"Web Project {self.project_id}"
 
 
-query_map = {
-    "java": JavaProject.query,
-    "html": HtmlProject.query
+project_map = {
+    "java": JavaProject,
+    "web": WebProject
 }

@@ -1,5 +1,5 @@
 import subprocess
-from app import log
+from external import log
 
 
 def run(cmd: list):
