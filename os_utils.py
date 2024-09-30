@@ -8,6 +8,6 @@ def run(cmd: list):
         process = subprocess.Popen(cmd)
     except subprocess.SubprocessError as e:
         log.error(f"Run command error: {e}")
-        return None, e
+        return None, str(e)
     log.info(f"Process {process.pid} started")
     return process, None

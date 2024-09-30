@@ -12,11 +12,11 @@ project_namespace = api.namespace("project", description="Project operations", p
 
 @project_namespace.route("/project")
 class ProjectController(Resource):
-    @api.expect("type", "project_id")
+    @api.expect("project_type", "project_id")
     def get(self):
         pid = request.args.get("project_id")
         log.info(f"Get project {pid}")
-        project_type = request.args.get("type")
+        project_type = request.args.get("project_type")
         project = project_map[project_type].query.filter_by(project_id=pid).first()
         return jsonify({
             "code": 200,
@@ -31,6 +31,7 @@ class ProjectController(Resource):
         log.info(f"Create project {body}")
         project = project_map[project_type](**body)
         db.session.add(project)
+        db.session.commit()
         return jsonify({
             "code": 200,
             "msg": "success",
@@ -63,7 +64,7 @@ class ListProjectController(Resource):
         return jsonify({
             "code": 200,
             "msg": "success",
-            "data": [str(project) for project in projects]
+            "data": [project.dict() for project in projects]
         })
 
 
@@ -112,6 +113,8 @@ class FileController(Resource):
         file.save(DE_FILE_PATH + file.filename)
         project = project_map[project_type].query.filter_by(project_id=project_id).first()
         if project and project.add_file(DE_FILE_PATH + file.filename):
+            project
+            db.session.commit()
             return jsonify({
                 "code": 200,
                 "msg": "success"

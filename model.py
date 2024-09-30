@@ -1,17 +1,13 @@
-import json
 import shutil
 from datetime import datetime
 
-from external import db
 from config.constant import *
+from external import db
 from os_utils import run
 
 
 class Project(db.Model):
     __abstract__ = True
-
-    def __str__(self):
-        return json.dumps(self.__dict__)
 
     def add_file(self, file_path):
         pass
@@ -26,6 +22,7 @@ class JavaProject(Project):
     config = db.Column(db.JSON)
     properties = db.Column(db.JSON)
     process = db.Column(db.JSON)
+    exception = db.Column(db.String(255))
 
     def __init__(self, **kwargs):
         self.java_path = kwargs.get("java_path", DE_JAVA_PATH)
@@ -35,6 +32,23 @@ class JavaProject(Project):
         self.properties = kwargs.get("properties", {})
         self.process = None
         self.exception = None
+
+    def dict(self):
+        status = 0
+        if self.process:
+            status = 1
+            if self.process.poll():
+                status = 2 if self.process.poll() == 0 else 3
+        return {
+            "project_id": self.project_id,
+            "java_path": self.java_path,
+            "jar_path": self.jar_path,
+            "jars": self.jars,
+            "config": self.config,
+            "properties": self.properties,
+            "status": status,
+            "exception": self.exception or "未知异常，请查看日志" if status == 3 else None
+        }
 
     def run(self):
         jvm_config = [f"-X{key}{value}" for key, value in self.config.items()]
@@ -58,7 +72,7 @@ class JavaProject(Project):
         return None
 
     def add_file(self, file_path):
-        jar_name = str(self.project_id) + datetime.now().strftime("%Y%m%d%H%M%S") + ".jar"
+        jar_name = str(self.project_id) + "-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".jar"
         jar_path = self.jar_path
         if not jar_path:
             return False
@@ -68,7 +82,7 @@ class JavaProject(Project):
             except FileNotFoundError:
                 pass
         self.jars.insert(0, jar_name)
-        shutil.move(file_path, jar_path + jar_name)
+        shutil.move(file_path, jar_path + "/" + jar_name)
         return True
 
     def del_all_files(self):

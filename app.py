@@ -43,6 +43,7 @@ def server_error(error):
 
 
 if __name__ == "__main__":
-    external.db.drop_all()
-    external.db.create_all()
+    with app.app_context():
+        external.db.drop_all()
+        external.db.create_all()
     app.run(debug=True, host="localhost", port=5000)
