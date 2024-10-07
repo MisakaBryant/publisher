@@ -1,8 +1,9 @@
+import os
 import shutil
 from datetime import datetime
 
 from config.constant import *
-from external import db
+from external import db, process_pool
 from os_utils import run
 
 
@@ -21,7 +22,7 @@ class JavaProject(Project):
     jars = db.Column(db.JSON)
     config = db.Column(db.JSON)
     properties = db.Column(db.JSON)
-    process = db.Column(db.JSON)
+    pid = db.Column(db.Integer)
     exception = db.Column(db.String(255))
 
     def __init__(self, **kwargs):
@@ -30,46 +31,48 @@ class JavaProject(Project):
         self.jars = []
         self.config = kwargs.get("config", {})
         self.properties = kwargs.get("properties", {})
-        self.process = None
+        self.pid = None
         self.exception = None
 
     def dict(self):
-        status = 0
-        if self.process:
-            status = 1
-            if self.process.poll():
-                status = 2 if self.process.poll() == 0 else 3
         return {
-            "project_id": self.project_id,
+            "project_id": str(self.project_id),
             "java_path": self.java_path,
             "jar_path": self.jar_path,
             "jars": self.jars,
             "config": self.config,
             "properties": self.properties,
-            "status": status,
-            "exception": self.exception or "未知异常，请查看日志" if status == 3 else None
+            "status": self.get_status(),
+            "exception": self.exception
         }
 
-    def run(self):
+    def run(self, idx=0):
+        self.stop()
+        if self.pid:
+            process_pool.pop(self.pid)
         jvm_config = [f"-X{key}{value}" for key, value in self.config.items()]
         properties = [f"-D{key}={value}" for key, value in self.properties.items()]
-        cmd = [self.java_path, *jvm_config, "-jar", self.jar_path, *properties]
-        self.process, self.exception = run(cmd)
+        cmd = [self.java_path + "/java", *jvm_config, "-jar", self.jar_path + "/" + self.jars[idx], *properties]
+        self.pid, self.exception = run(cmd)
 
     def stop(self):
-        if self.process:
-            self.process.terminate()
+        if self.pid:
+            process = process_pool[self.pid]
+            if process.poll() is None:
+                process.terminate()
 
     def restart(self):
         self.stop()
         self.run()
 
-    def status(self):
-        if self.process:
-            return self.process.poll()
-        if self.exception:
-            return self.exception
-        return None
+    def get_status(self):
+        status = 0
+        if self.pid:
+            status = 1
+            process = process_pool[self.pid]
+            if process.poll() is not None:
+                status = 2 if process.poll() == 0 else 3
+        return status
 
     def add_file(self, file_path):
         jar_name = str(self.project_id) + "-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".jar"
@@ -82,15 +85,18 @@ class JavaProject(Project):
             except FileNotFoundError:
                 pass
         self.jars.insert(0, jar_name)
+        if not os.path.exists(jar_path):
+            os.makedirs(jar_path)
         shutil.move(file_path, jar_path + "/" + jar_name)
         return True
 
     def del_all_files(self):
         for jar in self.jars:
             try:
-                shutil.rmtree(self.jar_path + jar)
+                os.remove(self.jar_path + "/" + jar)
             except FileNotFoundError:
                 pass
+        shutil.rmtree(self.jar_path)
         self.jars.clear()
 
 

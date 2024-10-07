@@ -1,4 +1,3 @@
-import os
 from logging.config import dictConfig
 
 from flask import Flask, jsonify

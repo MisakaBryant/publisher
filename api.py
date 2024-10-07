@@ -1,5 +1,8 @@
+import copy
+
 from flask import request, jsonify
 from flask_restx import Resource
+from sqlalchemy.orm.attributes import flag_modified
 from werkzeug.datastructures import FileStorage
 
 from config.constant import DE_FILE_PATH
@@ -21,7 +24,7 @@ class ProjectController(Resource):
         return jsonify({
             "code": 200,
             "msg": "success",
-            "data": str(project)
+            "data": project.dict()
         })
 
     @api.expect("project_type")
@@ -53,6 +56,21 @@ class ProjectController(Resource):
             "msg": "success"
         })
 
+    @api.expect("project_type", "project_id")
+    def delete(self):
+        project_type = request.args.get("project_type")
+        project_id = request.args.get("project_id")
+        log.info(f"Delete project {project_id}")
+        project = project_map[project_type].query.filter_by(project_id=project_id).first()
+        if project is not None:
+            project.del_all_files()
+            db.session.delete(project)
+            db.session.commit()
+        return jsonify({
+            "code": 200,
+            "msg": "success"
+        })
+
 
 @project_namespace.route("/list_project")
 class ListProjectController(Resource):
@@ -70,25 +88,36 @@ class ListProjectController(Resource):
 
 @project_namespace.route("/run")
 class RunProjectController(Resource):
-    @api.expect("type", "project_id", "cmd")
+    @api.expect("project_type", "project_id", "cmd")
     def post(self):
-        project_type = request.args.get("type")
+        project_type = request.args.get("project_type")
         project_id = request.args.get("project_id")
+        idx = int(request.args.get("idx", 0))
         cmd = request.args.get("cmd")
         log.info(f"Run project {project_id}")
         project = project_map[project_type].query.filter_by(project_id=project_id).first()
-        if project is JavaProject:
-            if cmd == "run":
-                project.run()
-            elif cmd == "stop":
-                project.stop()
-            elif cmd == "restart":
-                project.restart()
-            else:
+        if isinstance(project, JavaProject):
+            try:
+                if cmd == "run":
+                    project.run(idx)
+                elif cmd == "stop":
+                    project.stop()
+                elif cmd == "restart":
+                    project.restart()
+                else:
+                    return jsonify({
+                        "code": 400,
+                        "msg": "cmd not support"
+                    }), 400
+            except Exception as e:
+                log.error(e)
                 return jsonify({
-                    "code": 400,
-                    "msg": "cmd not support"
-                }), 400
+                    "code": 500,
+                    "msg": "server error"
+                }), 500
+        flag_modified(project, "pid")
+        flag_modified(project, "exception")
+        db.session.commit()
         return jsonify({
             "code": 200,
             "msg": "success"
@@ -113,7 +142,8 @@ class FileController(Resource):
         file.save(DE_FILE_PATH + file.filename)
         project = project_map[project_type].query.filter_by(project_id=project_id).first()
         if project and project.add_file(DE_FILE_PATH + file.filename):
-            project
+            # 如果不使用 flag_modified，SQLAlchemy 将不会检测到 JSON 字段的变化！！！
+            flag_modified(project, "jars")
             db.session.commit()
             return jsonify({
                 "code": 200,
