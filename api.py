@@ -1,3 +1,4 @@
+import psutil
 from flask import request, jsonify
 from flask_restx import Resource
 from sqlalchemy.orm.attributes import flag_modified
@@ -170,4 +171,47 @@ class FileController(Resource):
         return jsonify({
             "code": 500,
             "msg": "check if project exists or jar path is set"
+        })
+
+
+def good_looking_storage(num):
+    units = ["B", "KB", "MB", "GB", "TB"]
+    idx = 0
+    while num > 1024:
+        num /= 1024
+        idx += 1
+    return f"{num:.2f} {units[idx]}"
+
+
+@project_namespace.route("/system")
+class PSController(Resource):
+    def get(self):
+        log.info("Get system info")
+        logic_cpu_count = psutil.cpu_count()
+        cpu_count = psutil.cpu_count(logical=False)
+        cpu_percent = psutil.cpu_percent(interval=1)
+        mem_info = psutil.virtual_memory()
+        disk_info = psutil.disk_usage('/')
+
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "cpu_info": {
+                    "logic_cpu_count": logic_cpu_count,
+                    "cpu_count": cpu_count,
+                    "cpu_percent": cpu_percent
+                },
+                "mem_info": {
+                    "total": good_looking_storage(mem_info.total),
+                    "available": good_looking_storage(mem_info.available),
+                    "percent": mem_info.percent
+                },
+                "disk_info": {
+                    "total": good_looking_storage(disk_info.total),
+                    "used": good_looking_storage(disk_info.used),
+                    "free": good_looking_storage(disk_info.free),
+                    "percent": disk_info.percent
+                }
+            }
         })
