@@ -64,7 +64,7 @@ class JavaProject(Project):
     def stop(self):
         if self.pid:
             process = process_pool[self.pid]
-            if process.poll() is None:
+            if process.is_running():
                 process.terminate()
 
     def restart(self):
@@ -72,12 +72,17 @@ class JavaProject(Project):
         self.run()
 
     def get_status(self):
+        """
+        status: 0-未运行, 1-正在运行, 2-正常退出, 3-异常退出
+        :return: status
+        """
         status = 0
         if self.pid:
             status = 1
             process = process_pool[self.pid]
-            if process.poll() is not None:
-                status = 2 if process.poll() == 0 else 3
+            if not process.is_running():
+                _, exit_code = os.waitpid(self.pid, os.WNOHANG)
+                status = 2 if exit_code == 0 else 3
         return status
 
     def add_file(self, file_path):
