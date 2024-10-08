@@ -13,10 +13,14 @@ class Project(db.Model):
     def add_file(self, file_path):
         pass
 
+    def del_all_files(self):
+        pass
+
 
 class JavaProject(Project):
     __tablename__ = "java_project"
     project_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    project_name = db.Column(db.String(255))
     java_path = db.Column(db.String(255))
     jar_path = db.Column(db.String(255))
     jars = db.Column(db.JSON)
@@ -26,8 +30,9 @@ class JavaProject(Project):
     exception = db.Column(db.String(255))
 
     def __init__(self, **kwargs):
+        self.project_name = kwargs.get("project_name", "")
         self.java_path = kwargs.get("java_path", DE_JAVA_PATH)
-        self.jar_path = kwargs.get("jar_path", DE_FILE_PATH)
+        self.jar_path = kwargs.get("jar_path", "")
         self.jars = []
         self.config = kwargs.get("config", {})
         self.properties = kwargs.get("properties", {})
@@ -37,6 +42,7 @@ class JavaProject(Project):
     def dict(self):
         return {
             "project_id": str(self.project_id),
+            "project_name": self.project_name,
             "java_path": self.java_path,
             "jar_path": self.jar_path,
             "jars": self.jars,
@@ -81,7 +87,7 @@ class JavaProject(Project):
             return False
         if len(self.jars) >= MAX_FILE_COUNT:
             try:
-                shutil.rmtree(jar_path + self.jars.pop(MAX_FILE_COUNT - 1))
+                os.remove(jar_path + "/" + self.jars.pop(MAX_FILE_COUNT - 1))
             except FileNotFoundError:
                 pass
         self.jars.insert(0, jar_name)
@@ -103,9 +109,71 @@ class JavaProject(Project):
 class WebProject(Project):
     __tablename__ = "web_project"
     project_id = db.Column(db.Integer, primary_key=True)
+    project_name = db.Column(db.String(255))
+    zip_path = db.Column(db.String(255))
+    zips = db.Column(db.JSON)
+    dist_path = db.Column(db.String(255))
+    status = db.Column(db.Integer)
 
-    def __str__(self):
-        return f"Web Project {self.project_id}"
+    def __init__(self, **kwargs):
+        self.project_name = kwargs.get("project_name", "")
+        self.zip_path = kwargs.get("dist_path", DE_FILE_PATH)
+        self.zips = []
+        self.dist_path = kwargs.get("dist_path", "")
+        self.status = 0
+
+    def dict(self):
+        return {
+            "project_id": str(self.project_id),
+            "project_name": self.project_name,
+            "zip_path": self.zip_path,
+            "zips": self.zips,
+            "dist_path": self.dist_path,
+            "status": self.status
+        }
+
+    def deploy(self, idx=0):
+        zip_name = self.zips[idx]
+        zip_path = self.zip_path + "/" + zip_name
+        dist_path = self.dist_path
+        if not dist_path:
+            return False
+        if not os.path.exists(dist_path):
+            os.makedirs(dist_path)
+        shutil.unpack_archive(zip_path, dist_path)
+        self.status = 1
+        return True
+
+    def undeploy(self):
+        dist_path = self.dist_path
+        if os.path.exists(dist_path):
+            shutil.rmtree(dist_path)
+        self.status = 0
+
+    def add_file(self, file_path):
+        zip_name = str(self.project_id) + "-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".zip"
+        zip_path = self.zip_path
+        if not zip_path:
+            return False
+        if len(self.zips) >= MAX_FILE_COUNT:
+            try:
+                os.remove(zip_path + "/" + self.zips.pop(MAX_FILE_COUNT - 1))
+            except FileNotFoundError:
+                pass
+        self.zips.insert(0, zip_name)
+        if not os.path.exists(zip_path):
+            os.makedirs(zip_path)
+        shutil.move(file_path, zip_path + "/" + zip_name)
+        return True
+
+    def del_all_files(self):
+        for z in self.zips:
+            try:
+                os.remove(self.zip_path + "/" + z)
+            except FileNotFoundError:
+                pass
+        shutil.rmtree(self.zip_path)
+        self.zips.clear()
 
 
 project_map = {

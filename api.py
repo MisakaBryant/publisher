@@ -1,5 +1,3 @@
-import copy
-
 from flask import request, jsonify
 from flask_restx import Resource
 from sqlalchemy.orm.attributes import flag_modified
@@ -8,7 +6,7 @@ from werkzeug.datastructures import FileStorage
 from config.constant import DE_FILE_PATH
 from external import api
 from external import log, db
-from model import project_map, JavaProject
+from model import project_map, JavaProject, WebProject
 
 project_namespace = api.namespace("project", description="Project operations", path="/api")
 
@@ -115,9 +113,29 @@ class RunProjectController(Resource):
                     "code": 500,
                     "msg": "server error"
                 }), 500
-        flag_modified(project, "pid")
-        flag_modified(project, "exception")
-        db.session.commit()
+            flag_modified(project, "pid")
+            flag_modified(project, "exception")
+            db.session.commit()
+        elif isinstance(project, WebProject):
+            try:
+                if cmd == "deploy":
+                    project.deploy(idx)
+                elif cmd == "undeploy":
+                    project.undeploy()
+                else:
+                    return jsonify({
+                        "code": 400,
+                        "msg": "cmd not support"
+                    }), 400
+            except Exception as e:
+                log.error(e)
+                return jsonify({
+                    "code": 500,
+                    "msg": "server error"
+                }), 500
+            flag_modified(project, "status")
+            db.session.commit()
+
         return jsonify({
             "code": 200,
             "msg": "success"
