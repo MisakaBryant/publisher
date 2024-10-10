@@ -25,7 +25,7 @@ class ProcessPool:
                 process = psutil.Process(pid)
                 self.pool[pid] = process
             except psutil.NoSuchProcess:
-                log.warning("No such process: pid=" + pid)
+                log.warning("No such process: pid=" + str(pid))
         return process
 
     def __getitem__(self, pid):

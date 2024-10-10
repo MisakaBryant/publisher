@@ -50,6 +50,7 @@ class JavaProject(Project):
             "jars": self.jars,
             "config": self.config,
             "properties": self.properties,
+            "pid": self.pid,
             "status": self.get_status(),
             "exception": self.exception
         }
@@ -68,6 +69,7 @@ class JavaProject(Project):
             process = process_pool[self.pid]
             if process.is_running():
                 process.terminate()
+                os.waitpid(self.pid, 0)
 
     def restart(self):
         self.stop()
@@ -82,7 +84,10 @@ class JavaProject(Project):
         if self.pid:
             status = 1
             process = process_pool[self.pid]
-            if not process.is_running():
+            if not process:
+                status = 0
+                self.pid = None
+            elif not process.is_running():
                 _, exit_code = os.waitpid(self.pid, os.WNOHANG)
                 status = 2 if exit_code == 0 else 3
         return status
