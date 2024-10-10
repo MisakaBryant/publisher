@@ -1,3 +1,4 @@
+import logging
 from logging.config import dictConfig
 
 from flask import Flask, jsonify
@@ -12,6 +13,7 @@ external.api.init_app(app)
 # 加载日志配置
 dictConfig(log_config)
 external.log = app.logger
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 # 加载 sqlite
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///publisher.db'
@@ -42,7 +44,7 @@ def server_error(error):
 
 
 if __name__ == "__main__":
-    with app.app_context():
-        external.db.drop_all()
-        external.db.create_all()
-    app.run(debug=True, host="localhost", port=5000)
+    # with app.app_context():
+    #     external.db.drop_all()
+    #     external.db.create_all()
+    app.run(debug=False, host="0.0.0.0", port=5000)

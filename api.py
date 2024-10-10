@@ -14,7 +14,10 @@ project_namespace = api.namespace("project", description="Project operations", p
 
 @project_namespace.route("/project")
 class ProjectController(Resource):
-    @api.expect("project_type", "project_id")
+    @api.doc(params={
+        "project_type": "project_type",
+        "project_id": "project_id"
+    })
     def get(self):
         pid = request.args.get("project_id")
         log.info(f"Get project {pid}")
@@ -26,7 +29,9 @@ class ProjectController(Resource):
             "data": project.dict()
         })
 
-    @api.expect("project_type")
+    @api.doc(params={
+        "project_type": "project_type",
+    })
     def post(self):
         project_type = request.args.get("project_type")
         body = request.json
@@ -40,7 +45,10 @@ class ProjectController(Resource):
             "data": project.project_id
         })
 
-    @api.expect("project_type", "project_id")
+    @api.doc(params={
+        "project_type": "project_type",
+        "project_id": "project_id"
+    })
     def put(self):
         project_type = request.args.get("project_type")
         project_id = request.args.get("project_id")
@@ -55,13 +63,17 @@ class ProjectController(Resource):
             "msg": "success"
         })
 
-    @api.expect("project_type", "project_id")
+    @api.doc(params={
+        "project_type": "project_type",
+        "project_id": "project_id"
+    })
     def delete(self):
         project_type = request.args.get("project_type")
         project_id = request.args.get("project_id")
         log.info(f"Delete project {project_id}")
         project = project_map[project_type].query.filter_by(project_id=project_id).first()
         if project is not None:
+            project.stop()
             project.del_all_files()
             db.session.delete(project)
             db.session.commit()
@@ -73,9 +85,10 @@ class ProjectController(Resource):
 
 @project_namespace.route("/list_project")
 class ListProjectController(Resource):
-    @api.expect("project_type")
+    @api.doc(params={
+        "project_type": "project_type"
+    })
     def get(self):
-        log.info("List all projects")
         project_type = request.args.get("project_type")
         projects = project_map[project_type].query.all()
         return jsonify({
@@ -87,7 +100,11 @@ class ListProjectController(Resource):
 
 @project_namespace.route("/run")
 class RunProjectController(Resource):
-    @api.expect("project_type", "project_id", "cmd")
+    @api.doc(params={
+        "project_type": "project_type",
+        "project_id": "project_id",
+        "cmd": "run, stop, restart for java\ndeploy, undeploy for web"
+    })
     def post(self):
         project_type = request.args.get("project_type")
         project_id = request.args.get("project_id")
@@ -106,34 +123,38 @@ class RunProjectController(Resource):
                 else:
                     return jsonify({
                         "code": 400,
-                        "msg": "cmd not support"
-                    }), 400
+                        "msg": "fail",
+                        "data": cmd + " cmd not support"
+                    })
             except Exception as e:
                 log.error(e)
                 return jsonify({
                     "code": 500,
-                    "msg": "server error"
-                }), 500
+                    "msg": "server error",
+                    "data": str(e)
+                })
             flag_modified(project, "pid")
             flag_modified(project, "exception")
             db.session.commit()
         elif isinstance(project, WebProject):
             try:
-                if cmd == "deploy":
-                    project.deploy(idx)
-                elif cmd == "undeploy":
-                    project.undeploy()
+                if cmd == "run":
+                    project.run(idx)
+                elif cmd == "stop":
+                    project.stop()
                 else:
                     return jsonify({
                         "code": 400,
-                        "msg": "cmd not support"
-                    }), 400
+                        "msg": "fail",
+                        "data": cmd + " cmd not support"
+                    })
             except Exception as e:
                 log.error(e)
                 return jsonify({
                     "code": 500,
-                    "msg": "server error"
-                }), 500
+                    "msg": "server error",
+                    "data": str(e)
+                })
             flag_modified(project, "status")
             db.session.commit()
 
@@ -161,8 +182,6 @@ class FileController(Resource):
         file.save(DE_FILE_PATH + file.filename)
         project = project_map[project_type].query.filter_by(project_id=project_id).first()
         if project and project.add_file(DE_FILE_PATH + file.filename):
-            # 如果不使用 flag_modified，SQLAlchemy 将不会检测到 JSON 字段的变化！！！
-            flag_modified(project, "jars")
             db.session.commit()
             return jsonify({
                 "code": 200,
@@ -170,7 +189,7 @@ class FileController(Resource):
             })
         return jsonify({
             "code": 500,
-            "msg": "check if project exists or jar path is set"
+            "msg": "check if project exists or path is set"
         })
 
 
@@ -185,8 +204,12 @@ def good_looking_storage(num):
 
 @project_namespace.route("/system")
 class PSController(Resource):
+    @api.doc(responses={
+        "code": "200",
+        "msg": "msg",
+        "data": ""
+    })
     def get(self):
-        log.info("Get system info")
         logic_cpu_count = psutil.cpu_count()
         cpu_count = psutil.cpu_count(logical=False)
         cpu_percent = psutil.cpu_percent(interval=1)
@@ -204,7 +227,8 @@ class PSController(Resource):
                 },
                 "mem_info": {
                     "total": good_looking_storage(mem_info.total),
-                    "available": good_looking_storage(mem_info.available),
+                    "used": good_looking_storage(mem_info.used),
+                    "free": good_looking_storage(mem_info.free),
                     "percent": mem_info.percent
                 },
                 "disk_info": {

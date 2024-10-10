@@ -2,6 +2,8 @@ import os
 import shutil
 from datetime import datetime
 
+from sqlalchemy.orm.attributes import flag_modified
+
 from config.constant import *
 from external import db, process_pool
 from os_utils import run
@@ -99,6 +101,8 @@ class JavaProject(Project):
         if not os.path.exists(jar_path):
             os.makedirs(jar_path)
         shutil.move(file_path, jar_path + "/" + jar_name)
+        # 如果不使用 flag_modified，SQLAlchemy 将不会检测到 JSON 字段的变化！！！
+        flag_modified(self, "jars")
         return True
 
     def del_all_files(self):
@@ -107,7 +111,8 @@ class JavaProject(Project):
                 os.remove(self.jar_path + "/" + jar)
             except FileNotFoundError:
                 pass
-        shutil.rmtree(self.jar_path)
+        if os.path.exists(self.jar_path) and not os.listdir(self.jar_path):
+            shutil.rmtree(self.jar_path)
         self.jars.clear()
 
 
@@ -122,7 +127,7 @@ class WebProject(Project):
 
     def __init__(self, **kwargs):
         self.project_name = kwargs.get("project_name", "")
-        self.zip_path = kwargs.get("dist_path", DE_FILE_PATH)
+        self.zip_path = kwargs.get("zip_path", DE_FILE_PATH)
         self.zips = []
         self.dist_path = kwargs.get("dist_path", "")
         self.status = 0
@@ -137,7 +142,8 @@ class WebProject(Project):
             "status": self.status
         }
 
-    def deploy(self, idx=0):
+    def run(self, idx=0):
+        self.stop()
         zip_name = self.zips[idx]
         zip_path = self.zip_path + "/" + zip_name
         dist_path = self.dist_path
@@ -149,11 +155,15 @@ class WebProject(Project):
         self.status = 1
         return True
 
-    def undeploy(self):
-        dist_path = self.dist_path
+    def stop(self):
+        dist_path = self.dist_path + "/dist"
         if os.path.exists(dist_path):
             shutil.rmtree(dist_path)
         self.status = 0
+
+    def restart(self):
+        self.stop()
+        self.run()
 
     def add_file(self, file_path):
         zip_name = str(self.project_id) + "-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".zip"
@@ -169,6 +179,8 @@ class WebProject(Project):
         if not os.path.exists(zip_path):
             os.makedirs(zip_path)
         shutil.move(file_path, zip_path + "/" + zip_name)
+        # 如果不使用 flag_modified，SQLAlchemy 将不会检测到 JSON 字段的变化！！！
+        flag_modified(self, "zips")
         return True
 
     def del_all_files(self):
@@ -177,7 +189,9 @@ class WebProject(Project):
                 os.remove(self.zip_path + "/" + z)
             except FileNotFoundError:
                 pass
-        shutil.rmtree(self.zip_path)
+        # 如果文件夹不为空则不删除
+        if os.path.exists(self.zip_path) and not os.listdir(self.zip_path):
+            shutil.rmtree(self.zip_path)
         self.zips.clear()
 
 
