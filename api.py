@@ -133,9 +133,6 @@ class RunProjectController(Resource):
                     "msg": "server error",
                     "data": str(e)
                 })
-            flag_modified(project, "pid")
-            flag_modified(project, "exception")
-            db.session.commit()
         elif isinstance(project, WebProject):
             try:
                 if cmd == "run":

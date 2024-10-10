@@ -2,8 +2,10 @@ import os
 import shutil
 from datetime import datetime
 
+import psutil
 from sqlalchemy.orm.attributes import flag_modified
 
+import external
 from config.constant import *
 from external import db, process_pool
 from os_utils import run
@@ -29,6 +31,7 @@ class JavaProject(Project):
     config = db.Column(db.JSON)
     properties = db.Column(db.JSON)
     pid = db.Column(db.Integer)
+    status = db.Column(db.Integer)
     exception = db.Column(db.String(255))
 
     def __init__(self, **kwargs):
@@ -39,6 +42,7 @@ class JavaProject(Project):
         self.config = kwargs.get("config", {})
         self.properties = kwargs.get("properties", {})
         self.pid = None
+        self.status = 0
         self.exception = None
 
     def dict(self):
@@ -63,13 +67,17 @@ class JavaProject(Project):
         properties = [f"-D{key}={value}" for key, value in self.properties.items()]
         cmd = [self.java_path + "/java", *jvm_config, "-jar", self.jar_path + "/" + self.jars[idx], *properties]
         self.pid, self.exception = run(cmd)
+        self.status = 1
+        flag_modified(self, "exception")
+        db.session.commit()
 
     def stop(self):
-        if self.pid:
+        if self.pid and self.get_status() == 1:
             process = process_pool[self.pid]
             if process.is_running():
                 process.terminate()
-                os.waitpid(self.pid, 0)
+                self.status = 2
+                db.session.commit()
 
     def restart(self):
         self.stop()
@@ -80,17 +88,23 @@ class JavaProject(Project):
         status: 0-未运行, 1-正在运行, 2-正常退出, 3-异常退出
         :return: status
         """
-        status = 0
-        if self.pid:
-            status = 1
-            process = process_pool[self.pid]
-            if not process:
-                status = 0
-                self.pid = None
-            elif not process.is_running():
-                _, exit_code = os.waitpid(self.pid, os.WNOHANG)
-                status = 2 if exit_code == 0 else 3
-        return status
+        # 只有当进程运行中才需要轮询进程状态
+        if self.status == 1:
+            if self.pid:
+                process = process_pool[self.pid]
+                if not process:
+                    self.status = 0
+                    db.session.commit()
+                    return self.status
+                try:
+                    if not process.status() == psutil.STATUS_RUNNING:
+                        _, exit_code = os.waitpid(self.pid, os.WNOHANG)
+                        self.status = 2 if exit_code == 0 else 3
+                        db.session.commit()
+                except psutil.NoSuchProcess:
+                    self.status = 0
+                    db.session.commit()
+        return self.status
 
     def add_file(self, file_path):
         jar_name = str(self.project_id) + "-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".jar"
@@ -153,12 +167,12 @@ class WebProject(Project):
         zip_path = self.zip_path + "/" + zip_name
         dist_path = self.dist_path
         if not dist_path:
-            return False
+            return
         if not os.path.exists(dist_path):
             os.makedirs(dist_path)
         shutil.unpack_archive(zip_path, dist_path)
         self.status = 1
-        return True
+        db.session.commit()
 
     def stop(self):
         dist_path = self.dist_path + "/dist"

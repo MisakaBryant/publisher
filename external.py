@@ -36,8 +36,13 @@ class ProcessPool:
 
     def pop(self, pid):
         process = self.pool.get(pid)
-        if process.is_running:
-            process.terminate()
+        if not process:
+            return
+        try:
+            if process.is_running():
+                process.terminate()
+        except psutil.NoSuchProcess:
+            pass
         return self.pool.pop(pid)
 
 
