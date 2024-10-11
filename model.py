@@ -7,7 +7,7 @@ import psutil
 from sqlalchemy.orm.attributes import flag_modified
 
 from config.constant import *
-from external import db, process_pool
+from external import db, process_pool, log
 from os_utils import run
 
 
@@ -67,6 +67,9 @@ class JavaProject(Project):
         properties = [f"-D{key}={value}" for key, value in self.properties.items()]
         cmd = ["nohup", self.java_path + "/java", *jvm_config, "-jar", self.jar_path + "/" + self.jars[idx], *properties, "&"]
         self.pid, self.exception = run(cmd)
+        log.info(f"Process {self.pid} started")
+        process = psutil.Process(self.pid)
+        process_pool[self.pid] = process
         self.status = 1
         flag_modified(self, "exception")
         db.session.commit()
@@ -142,6 +145,7 @@ class WebProject(Project):
     zip_path = db.Column(db.String(255))
     zips = db.Column(db.JSON)
     dist_path = db.Column(db.String(255))
+    after_script = db.Column(db.String(255))
     status = db.Column(db.Integer)
 
     def __init__(self, **kwargs):
@@ -149,6 +153,7 @@ class WebProject(Project):
         self.zip_path = kwargs.get("zip_path", DE_FILE_PATH)
         self.zips = []
         self.dist_path = kwargs.get("dist_path", "")
+        self.after_script = ""
         self.status = 0
 
     def dict(self):
@@ -158,6 +163,7 @@ class WebProject(Project):
             "zip_path": self.zip_path,
             "zips": self.zips,
             "dist_path": self.dist_path,
+            "after_script": self.after_script,
             "status": self.status
         }
 
@@ -173,6 +179,9 @@ class WebProject(Project):
         shutil.unpack_archive(zip_path, dist_path)
         self.status = 1
         db.session.commit()
+        # 执行后置脚本
+        if self.after_script:
+            run(self.after_script)
 
     def stop(self):
         dist_path = self.dist_path + "/dist"
