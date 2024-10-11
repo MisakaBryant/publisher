@@ -1,11 +1,11 @@
 import os
 import shutil
+import sys
 from datetime import datetime
 
 import psutil
 from sqlalchemy.orm.attributes import flag_modified
 
-import external
 from config.constant import *
 from external import db, process_pool
 from os_utils import run
@@ -65,7 +65,7 @@ class JavaProject(Project):
             process_pool.pop(self.pid)
         jvm_config = [f"-X{key}{value}" for key, value in self.config.items()]
         properties = [f"-D{key}={value}" for key, value in self.properties.items()]
-        cmd = [self.java_path + "/java", *jvm_config, "-jar", self.jar_path + "/" + self.jars[idx], *properties]
+        cmd = ["nohup", self.java_path + "/java", *jvm_config, "-jar", self.jar_path + "/" + self.jars[idx], *properties, "&"]
         self.pid, self.exception = run(cmd)
         self.status = 1
         flag_modified(self, "exception")
@@ -89,21 +89,21 @@ class JavaProject(Project):
         :return: status
         """
         # 只有当进程运行中才需要轮询进程状态
-        if self.status == 1:
-            if self.pid:
-                process = process_pool[self.pid]
-                if not process:
-                    self.status = 0
+        if self.status == 1 and self.pid:
+            process = process_pool[self.pid]
+            if not process:
+                self.status = 0
+                db.session.commit()
+                return self.status
+            try:
+                if process.status() == psutil.STATUS_ZOMBIE or process.status() == psutil.STATUS_DEAD:
+                    option = 0 if sys.platform == "win32" else os.WNOHANG
+                    _, exit_code = os.waitpid(self.pid, option)
+                    self.status = 2 if exit_code == 0 else 3
                     db.session.commit()
-                    return self.status
-                try:
-                    if not process.status() == psutil.STATUS_RUNNING:
-                        _, exit_code = os.waitpid(self.pid, os.WNOHANG)
-                        self.status = 2 if exit_code == 0 else 3
-                        db.session.commit()
-                except psutil.NoSuchProcess:
-                    self.status = 0
-                    db.session.commit()
+            except psutil.NoSuchProcess:
+                self.status = 0
+                db.session.commit()
         return self.status
 
     def add_file(self, file_path):
