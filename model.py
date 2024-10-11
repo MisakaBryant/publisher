@@ -179,6 +179,7 @@ class WebProject(Project):
         if os.path.exists(dist_path):
             shutil.rmtree(dist_path)
         self.status = 0
+        db.session.commit()
 
     def restart(self):
         self.stop()

@@ -112,7 +112,8 @@ class RunProjectController(Resource):
         cmd = request.args.get("cmd")
         log.info(f"Run project {project_id}")
         project = project_map[project_type].query.filter_by(project_id=project_id).first()
-        if isinstance(project, JavaProject):
+        if (isinstance(project, JavaProject) or
+                isinstance(project, WebProject)):
             try:
                 if cmd == "run":
                     project.run(idx)
@@ -133,27 +134,6 @@ class RunProjectController(Resource):
                     "msg": "server error",
                     "data": str(e)
                 })
-        elif isinstance(project, WebProject):
-            try:
-                if cmd == "run":
-                    project.run(idx)
-                elif cmd == "stop":
-                    project.stop()
-                else:
-                    return jsonify({
-                        "code": 400,
-                        "msg": "fail",
-                        "data": cmd + " cmd not support"
-                    })
-            except Exception as e:
-                log.error(e)
-                return jsonify({
-                    "code": 500,
-                    "msg": "server error",
-                    "data": str(e)
-                })
-            flag_modified(project, "status")
-            db.session.commit()
 
         return jsonify({
             "code": 200,
