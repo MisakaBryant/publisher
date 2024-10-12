@@ -1,7 +1,6 @@
 import psutil
 from flask import request, jsonify
 from flask_restx import Resource
-from sqlalchemy.orm.attributes import flag_modified
 from werkzeug.datastructures import FileStorage
 
 from config.constant import DE_FILE_PATH
@@ -128,7 +127,7 @@ class RunProjectController(Resource):
                         "data": cmd + " cmd not support"
                     })
             except Exception as e:
-                log.error(e)
+                log.exception(e)
                 return jsonify({
                     "code": 500,
                     "msg": "server error",

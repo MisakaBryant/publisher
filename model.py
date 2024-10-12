@@ -153,7 +153,7 @@ class WebProject(Project):
         self.zip_path = kwargs.get("zip_path", DE_FILE_PATH)
         self.zips = []
         self.dist_path = kwargs.get("dist_path", "")
-        self.after_script = ""
+        self.after_script = kwargs.get("after_script", "")
         self.status = 0
 
     def dict(self):

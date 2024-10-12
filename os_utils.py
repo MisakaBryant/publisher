@@ -1,3 +1,4 @@
+# encoding: utf-8
 import subprocess
 from typing import Union
 
@@ -10,7 +11,7 @@ def run(cmd: Union[list, str]):
     else:
         log.info(f"Run command: {cmd}")
     try:
-        popen = subprocess.Popen(cmd)
+        popen = subprocess.Popen(cmd, shell=True)
     except subprocess.SubprocessError as e:
         log.error(f"Run command error: {e}")
         return None, str(e)
